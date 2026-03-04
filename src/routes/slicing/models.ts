@@ -23,6 +23,8 @@ export interface SliceMetaData {
 
 export type Category = "printers" | "presets" | "filaments";
 
+export type ProfileType = "machine" | "process" | "filament";
+
 export interface UploadedProfiles {
   printer?: Buffer;
   preset?: Buffer;

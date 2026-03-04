@@ -10,6 +10,7 @@ import type {
   UploadedProfiles,
 } from "./models";
 import { Open } from "unzipper";
+import { systemProfiles } from "../../services/system-profiles.service";
 
 export async function sliceModel(
   file: Buffer,
@@ -65,17 +66,36 @@ export async function sliceModel(
     const settingsArg = `${inputDir}/printer.json;${inputDir}/preset.json`;
     args.push("--load-settings", settingsArg);
   } else if (settings.printer && settings.preset) {
-    const settingsArg = `${basePath}/printers/${settings.printer}.json;${basePath}/presets/${settings.preset}.json`;
-    args.push("--load-settings", settingsArg);
+    const systemPrinter = systemProfiles.resolve("machine", settings.printer);
+    const systemPreset = systemProfiles.resolve("process", settings.preset);
+
+    if (systemPrinter && systemPreset) {
+      const printerPath = path.join(inputDir, "printer.json");
+      const presetPath = path.join(inputDir, "preset.json");
+      await fs.writeFile(printerPath, JSON.stringify(systemPrinter));
+      await fs.writeFile(presetPath, JSON.stringify(systemPreset));
+      args.push("--load-settings", `${printerPath};${presetPath}`);
+    } else {
+      const settingsArg = `${basePath}/printers/${settings.printer}.json;${basePath}/presets/${settings.preset}.json`;
+      args.push("--load-settings", settingsArg);
+    }
   }
 
   if (tempProfiles?.filament) {
     args.push("--load-filaments", `${inputDir}/filament.json`);
   } else if (settings.filament) {
-    args.push(
-      "--load-filaments",
-      `${basePath}/filaments/${settings.filament}.json`
-    );
+    const systemFilament = systemProfiles.resolve("filament", settings.filament);
+
+    if (systemFilament) {
+      const filamentPath = path.join(inputDir, "filament.json");
+      await fs.writeFile(filamentPath, JSON.stringify(systemFilament));
+      args.push("--load-filaments", filamentPath);
+    } else {
+      args.push(
+        "--load-filaments",
+        `${basePath}/filaments/${settings.filament}.json`
+      );
+    }
   }
 
   if (settings.bedType) {

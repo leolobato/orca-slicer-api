@@ -4,6 +4,8 @@ import { errorHandler } from "./middleware/error";
 import health from "./routes/health/route";
 import profiles from "./routes/profiles/route";
 import slicing from "./routes/slicing/route";
+import systemProfilesRoute from "./routes/system-profiles/route";
+import { systemProfiles } from "./services/system-profiles.service";
 import cors from "cors";
 
 export const configureApp = () => {
@@ -31,6 +33,7 @@ export const configureApp = () => {
   app.use("/health", health);
   app.use("/profiles", profiles);
   app.use("/slice", slicing);
+  app.use("/system-profiles", systemProfilesRoute);
 
   app.use(errorHandler);
 
@@ -54,6 +57,10 @@ if (process.env.NODE_ENV !== "production") {
       console.error("Failed to load swagger.json:", err);
     });
 }
+
+systemProfiles.initialize().catch((err) => {
+  console.warn("Failed to initialize system profiles:", err);
+});
 
 app.listen(port, () => {
   console.log(`App listening on port ${port}`);
