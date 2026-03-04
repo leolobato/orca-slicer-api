@@ -10,6 +10,7 @@ import type {
   UploadedProfiles,
 } from "./models";
 import { Open } from "unzipper";
+import { systemProfiles } from "../../services/system-profiles.service";
 
 export async function sliceModel(
   file: Buffer,
@@ -61,21 +62,59 @@ export async function sliceModel(
     args.push("--orient", settings.orient ? "1" : "0");
   }
 
-  if (tempProfiles?.printer && tempProfiles?.preset) {
-    const settingsArg = `${inputDir}/printer.json;${inputDir}/preset.json`;
-    args.push("--load-settings", settingsArg);
-  } else if (settings.printer && settings.preset) {
-    const settingsArg = `${basePath}/printers/${settings.printer}.json;${basePath}/presets/${settings.preset}.json`;
-    args.push("--load-settings", settingsArg);
+  {
+    // Resolve printer profile: uploaded file or system profile by name
+    let printerJson: string | null = null;
+    if (tempProfiles?.printer) {
+      printerJson = tempProfiles.printer.toString("utf-8");
+    } else if (settings.printer) {
+      const resolved = systemProfiles.resolveByName("machine", settings.printer);
+      if (resolved) printerJson = JSON.stringify(resolved);
+    }
+
+    // Resolve preset profile: system profile by name, with uploaded overrides merged on top
+    let presetJson: string | null = null;
+    if (settings.preset) {
+      const resolved = systemProfiles.resolveByName("process", settings.preset);
+      if (resolved && tempProfiles?.preset) {
+        const overrides = JSON.parse(tempProfiles.preset.toString("utf-8"));
+        const merged = { ...resolved, ...overrides };
+        presetJson = JSON.stringify(merged);
+      } else if (resolved) {
+        presetJson = JSON.stringify(resolved);
+      }
+    }
+    if (!presetJson && tempProfiles?.preset) {
+      presetJson = tempProfiles.preset.toString("utf-8");
+    }
+
+    if (printerJson && presetJson) {
+      const printerPath = path.join(inputDir, "printer.json");
+      const presetPath = path.join(inputDir, "preset.json");
+      await fs.writeFile(printerPath, printerJson);
+      await fs.writeFile(presetPath, presetJson);
+      args.push("--load-settings", `${printerPath};${presetPath}`);
+    } else if (settings.printer && settings.preset) {
+      const settingsArg = `${basePath}/printers/${settings.printer}.json;${basePath}/presets/${settings.preset}.json`;
+      args.push("--load-settings", settingsArg);
+    }
   }
 
   if (tempProfiles?.filament) {
     args.push("--load-filaments", `${inputDir}/filament.json`);
   } else if (settings.filament) {
-    args.push(
-      "--load-filaments",
-      `${basePath}/filaments/${settings.filament}.json`
-    );
+    const systemFilament = systemProfiles.resolveByName("filament", settings.filament);
+
+    if (systemFilament) {
+      const filamentPath = path.join(inputDir, "filament.json");
+      await fs.writeFile(filamentPath, JSON.stringify(systemFilament));
+      args.push("--load-filaments", filamentPath);
+    } else {
+      args.push(
+        "--load-filaments",
+        `${basePath}/filaments/${settings.filament}.json`
+      );
+    }
   }
 
   if (settings.bedType) {
